@@ -1,11 +1,15 @@
 import serial
 import subprocess
-import mouse
-import time
+import time, os
+import sys
+from pynput.keyboard import Key, Controller
+
+# keyboard
+keyboard = Controller()
 
 # serial port(this is the default for linux)
 serial_port = "/dev/ttyACM0"
-
+username = "vi"
 
 # helper fn
 def byt(st: str):
@@ -19,22 +23,41 @@ def check(readline: bytes, hex: str):
     if readline == hex.replace(b"0", b"8", 1): return True
     return False
 
+def root_check():
+    return os.geteuid() == 0
+
+def press_and_release(key):
+     keyboard.press(key)
+     keyboard.release(key)
+
 # executing helper fn	
 def execute(args: list, launch_in_kitty = False):
-     if launch_in_kitty:
+     as_root = root_check()
+     if as_root:
+          other = ["su", username, "&&"]
+          args[0:0] = other
+          print(args)
+          command = ""
+          for item in args:
+               command += item + " "
+          subprocess.run(command, check=False, text=True, shell=True, capture_output=True)
+     elif launch_in_kitty:
           args.insert(0,"--")
           args.insert(0,"kitty")
           subprocess.Popen(args)
+          
           return
      else:
+          print(args)
           subprocess.Popen(args)
+          return
 
 # commands
 # replace these with your own
 # currently depends on https://github.com/vially/volumectl and https://github.com/altdesktop/playerctl
 # and a browser
 class Commands:
-    
+    # music controls
      def vol_up():
           execute(["volumectl", "up"])
      def vol_down():
@@ -47,6 +70,23 @@ class Commands:
           execute(["playerctl", "next"])
      def previous_song():
           execute(["playerctl", "previous"])
+     def back():
+          execute(["playerctl", "position", "10+"])
+     def fwd():
+          execute(["playerctl", "position", "10-"])
+     
+     def kb_up():
+          press_and_release(Key.up)
+     def kb_down():
+          press_and_release(Key.down)
+     def kb_left():
+          press_and_release(Key.left)
+     def kb_right():
+          press_and_release(Key.right)
+     def kb_enter():
+          press_and_release(Key.enter)
+     def kb_backspace():
+          press_and_release(Key.backspace)
           
      def mouse_down():
           mouse.drag(start_y=0, end_y=500, absolute=False, start_x=0, end_x=0)
@@ -67,16 +107,20 @@ class Commands:
      commands = {
           "1050": vol_up,
           "1051": vol_down,
-          "104D": mute,
+          "104D": pause,
           "1074": rickroll,
-          "1054": mouse_up,
-          "1056": mouse_right,
-          "1055": mouse_left,
-          "1053": mouse_down,
-          "1070": left_click,
+          # for kodi or librelec
+          "1054": kb_up,
+          "1056": kb_right,
+          "1055": kb_left,
+          "1053": kb_down,
+          "1075": kb_enter,
+          "104A": kb_backspace,
+          # end
           "1060": next_song,
           "1061": previous_song,
-          "106F": pause,
+          "106F": back,
+          "1052": fwd,
           # 104X where X is the number on the remote
           # for example 1045 is the number five on the remote...
           "1041": one
@@ -85,7 +129,10 @@ class Commands:
          
 # open the serial port
 with serial.Serial(serial_port) as s:
-    print(f"Serial listening on port {serial_port}")
+    print(f"Serial listening on port {serial_port} ")
+    if root_check(): sys.exit(0)
+
+
     while True:
         # reads the latest line from the arduino
         a = s.readline()
